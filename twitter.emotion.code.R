@@ -113,28 +113,28 @@ p3 <- ggarrange(p1, p2,
 
 p4 <- tr_sentiment %>%
   subset(Word != "thanking") %>% 
-  subset(Valence > 0.05) %>% 
+  subset(Valence > 0.88) %>% 
   group_by(Word) %>%
   top_n(10) %>% 
   ungroup() %>%
   mutate(Word = reorder(Word, Valence)) %>%
   ggplot(aes(Word, Valence)) +
   geom_point(show.legend = FALSE) +
-  labs(title = "Most Negative Words in Turkish",
+  labs(title = "Most Positive Words in Turkish",
        y = "Valence",
        x = NULL) +
   coord_flip()
 
 
 p5 <- en_sentiment %>%
-  subset(Valence < 0.03) %>% 
+  subset(Valence > 0.96) %>% 
   group_by(Word) %>%
   top_n(10) %>% 
   ungroup() %>%
   mutate(Word = reorder(Word, Valence)) %>%
   ggplot(aes(Word, Valence)) +
   geom_point(show.legend = FALSE) +
-  labs(title = "Most Negative Words in English",
+  labs(title = "Most Positive Words in English",
        y = "Valence",
        x = NULL) +
   coord_flip()
@@ -142,7 +142,9 @@ p5 <- en_sentiment %>%
 p6 <-  ggarrange(p5, p4, 
                  labels = c("En","Tur"),
                  ncol = 1, nrow = 2)
+getwd()
 
+ggsave("most_positive_words.png", p6)
 # Other Twitter stuff
 
 simit_df <- search_tweets("simit", lang = "tr", n = 2000, include_rts = FALSE) 
