@@ -2,29 +2,31 @@
 
 # packages
 
-library(purrr)
-library(plyr)
-library(stringr)
-library(dplyr)
-library(magrittr)
-library(ggplot2)
-library(readr)
-library(rtweet)
-library(tidytext)
-library(wordcloud2)
-library(stopwords)
-library(coreNLP)
-library("tm")
-library(textdata)
-library(ggpubr)
-library("twtools")
-library("cld3")
+
+library(purrr) # could use for data cleaning
+library(stringr) # str_replace_all function, data cleaning
+library(dplyr) # anti_join, inner_join, count, ungroup
+library(magrittr) # pipe %>% 
+library(ggplot2) # visuals
+# read data frames
+library("readr")
+library(rtweet) # Twitter magic
+library(tidytext) #unnest_tokens
+library(wordcloud2) 
+library(stopwords) 
+library(coreNLP)# nlp stuff
+library(textdata) # lexicons
+library(ggpubr) # combine plots
+library(tm) # removeNumbers()
+
+
 #Twitter Sentiment Analysis / NLP
 
 # Import a sentiment lexicon.
 
 Lexicon <- read_delim(file = "Turkish-tr-NRC-VAD-Lexicon.txt", "\t", 
-                      locale = locale(date_names = "tr", encoding = "UTF-8"))
+                      locale = locale(date_names = "tr", 
+                                      encoding = "UTF-8"))
 
 # Twitter API settings
 
@@ -32,26 +34,42 @@ token <- create_token(...)
 
 # Get English Tweets from a bilingual twitter account.
 
-tweets_bilingual <- get_timeline("yuksel_gunal", n = 5000, include_rts = FALSE)
+tweets_bilingual <- get_timeline("yuksel_gunal", n = 5000,
+                                 include_rts = FALSE)
 
 # Cleaning the data
 
-tweets_bilingual$text <- removeNumbers(tweets_bilingual$text)
+clean_tweets <- function(x) {
+  x %>%
+    str_remove_all(" ?(f|ht)(tp)(s?)(://)(.*)[.|/](.*)") %>%
+    str_replace_all("&amp;", "and") %>%
+    str_replace("RT @[a-z,A-Z]*: ","") %>% 
+    str_remove_all("[[:punct:]]") %>%
+    str_replace_all("@[a-z,A-Z]*","") %>% 
+    str_replace_all("#[a-z,A-Z]*","") %>% 
+    str_remove_all("^RT:? ") %>%
+    str_remove_all("@[[:alnum:]]+") %>%
+    str_remove_all("#[[:alnum:]]+") %>%
+    str_replace_all("\\\n", " ") %>%
+    str_to_lower() %>%
+    str_trim("both")
+}
 
-tweets_bilingual$text <- clean_tweets(tweets_bilingual$text)
+tweets_bilingual$text_clean <- tweets_bilingual$text %>% clean_tweets
+
 
 # Create Turkish stop words
 
-stop_turkish <- data.frame(word = stopwords::stopwords("tr", source = "stopwords-iso"), stringsAsFactors = FALSE)
+stop_turkish <- data.frame(word = stopwords::stopwords("tr", source = "stopwords-iso"), 
+                           stringsAsFactors = FALSE)
 
 # Get a list of words
 
 tweets_clean <- tweets_bilingual %>%
-  select(text) %>%
-  unnest_tokens(word, text) %>%
+  select(text_clean) %>%
+  unnest_tokens(word, text_clean) %>%
   anti_join(stop_words) %>% 
   anti_join(stop_turkish)
-  
 
 # Rename the column  
 
@@ -82,38 +100,47 @@ tr_sentiment <- tweets_clean %>%
 
 # Form a word cloud
 
-wordcloud2(tr_sentiment, size = 0.30)
-wordcloud2(en_sentiment, size = 0.30)
+wordcloud_tr <- wordcloud2(tr_sentiment, size = 0.30)
+wordcloud_en <- wordcloud2(en_sentiment, size = 0.30)
+
+ggsave("wordcloud_tr.png", wordcloud_tr)
 
 # Get a boxplot for Arousal and Valence
 
-mean(en_sentiment$Valence)
-mean(tr_sentiment$Valence)
-  
-boxplot(en_sentiment$Arousal, tr_sentiment$Arousal,
-        main = "Arousal in Bilingual Twitter Account (1197 Tweets)",
-        names = c("English", "Turkish"))
+mean(en_sentiment$Arousal)
+mean(tr_sentiment$Arousal)
 
+p0 <- boxplot(en_sentiment$Arousal, tr_sentiment$Arousal,
+              main = "Arousal in Bilingual Twitter Account (1197 Tweets)",
+              names = c("English", "Turkish"))
+
+ggsave("boxplot.png", p0)
 # Plotting a histogram for Valence
 
 p1 <- en_sentiment %>% 
   ggplot(aes(Arousal)) +
   geom_histogram(binwidth = 0.015)
 
+ggsave("p1.png", p1)
+
 p2 <- tr_sentiment %>% 
   ggplot(aes(Arousal)) +
   geom_histogram(binwidth = 0.015)
 
+ggsave("p2.png", p2)
+
 # Merging two plots
 p3 <- ggarrange(p1, p2, 
-          labels = c("En","Tur"),
-          ncol = 1, nrow = 2)
+                labels = c("En","Tur"),
+                ncol = 1, nrow = 2)
+
+ggsave("histogram.png", p3)
 
 # Another cool plot
 
 p4 <- tr_sentiment %>%
   subset(Word != "thanking") %>% 
-  subset(Valence > 0.88) %>% 
+  subset(Valence > 0.85) %>% 
   group_by(Word) %>%
   top_n(10) %>% 
   ungroup() %>%
@@ -127,14 +154,14 @@ p4 <- tr_sentiment %>%
 
 
 p5 <- en_sentiment %>%
-  subset(Valence > 0.96) %>% 
+  subset(Valence > 0.94) %>% 
   group_by(Word) %>%
   top_n(10) %>% 
   ungroup() %>%
   mutate(Word = reorder(Word, Valence)) %>%
   ggplot(aes(Word, Valence)) +
   geom_point(show.legend = FALSE) +
-  labs(title = "Most Positive Words in English",
+  labs(title = "Most Negative Words in English",
        y = "Valence",
        x = NULL) +
   coord_flip()
@@ -142,9 +169,9 @@ p5 <- en_sentiment %>%
 p6 <-  ggarrange(p5, p4, 
                  labels = c("En","Tur"),
                  ncol = 1, nrow = 2)
-getwd()
 
 ggsave("most_positive_words.png", p6)
+
 # Other Twitter stuff
 
 simit_df <- search_tweets("simit", lang = "tr", n = 2000, include_rts = FALSE) 
